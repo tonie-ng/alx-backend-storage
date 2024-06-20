@@ -4,33 +4,30 @@ web cache and tracker
 """
 import requests
 import redis
-from functools import wraps
-
-store = redis.Redis()
+import time
 
 
-def count_url_access(method):
-    """ Decorator counting how many times
-    a URL is accessed """
-    @wraps(method)
-    def wrapper(url):
-        cached_key = "cached:" + url
-        cached_data = store.get(cached_key)
-        if cached_data:
-            return cached_data.decode("utf-8")
-
-        count_key = "count:" + url
-        html = method(url)
-
-        store.incr(count_key)
-        store.set(cached_key, html)
-        store.expire(cached_key, 10)
-        return html
-    return wrapper
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
 
-@count_url_access
 def get_page(url: str) -> str:
-    """ Returns HTML content of a url """
-    res = requests.get(url)
-    return res.text
+    """
+    Fetches HTML content from URL
+    """
+    cached_html = redis_client.get(url)
+
+    if cached_html:
+        print(f"{Returning cached content for {url}")
+        return cached_html.decode('utf-8')
+
+    response = requests.get(url)
+    html_content = response.text
+
+    redis_client.setex(url, 10, html_content)
+
+    count_key = f"count:{url}"
+    redis_client.incr(count_key)
+
+    print(f"Feteched new content for {url}")
+
+    return html_content
